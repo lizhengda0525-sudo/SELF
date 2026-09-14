@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">自明 SELF</string>
+    <string name="title_activity_main">自明 SELF</string>
+    <string name="package_name">com.self.steward</string>
+    <string name="custom_url_scheme">com.self.steward</string>
+</resources>

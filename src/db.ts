@@ -1,3 +1,4 @@
+import { exportText } from "./export";
 import Dexie, { type EntityTable } from "dexie";
 import { emptyData, validateData, type Data } from "./domain";
 
@@ -10,6 +11,7 @@ export interface Vault {
   savedAt: string;
   syncedAt: string;
   endpoint: string;
+  serverBase?: Data | null;
 }
 export interface Backup {
   id: string;
@@ -22,6 +24,22 @@ export const db = new Dexie("self-steward-v1") as Dexie & {
   backups: EntityTable<Backup, "id">;
 };
 db.version(1).stores({ vault: "id", backups: "id, createdAt" });
+db.version(2)
+  .stores({ vault: "id", backups: "id, createdAt" })
+  .upgrade(async (tx) => {
+    await tx
+      .table("vault")
+      .toCollection()
+      .modify((v) => {
+        v.data = validateData(v.data);
+        v.serverBase =
+          v.serverRevision === 0
+            ? emptyData()
+            : v.dirty
+              ? null
+              : structuredClone(v.data);
+      });
+  });
 export async function initialize() {
   await db.transaction("rw", db.vault, async () => {
     if (!(await db.vault.get("main")))
@@ -34,6 +52,7 @@ export async function initialize() {
         savedAt: "",
         syncedAt: "",
         endpoint: "",
+        serverBase: emptyData(),
       });
   });
   if (navigator.storage?.persist)
@@ -71,21 +90,12 @@ export async function replaceData(data: Data, reason: string) {
   });
 }
 export function download(data: Data, name = "self-backup") {
-  const url = URL.createObjectURL(
-    new Blob(
-      [
-        JSON.stringify(
-          { app: "SELF", exportedAt: new Date().toISOString(), data },
-          null,
-          2,
-        ),
-      ],
-      { type: "application/json" },
+  void exportText(
+    `${name}-${new Date().toISOString().slice(0, 10)}.json`,
+    JSON.stringify(
+      { app: "SELF", exportedAt: new Date().toISOString(), data },
+      null,
+      2,
     ),
-  );
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${name}-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  ).catch((e) => alert(`导出失败：${e.message}`));
 }

@@ -1,0 +1,1 @@
+{"identifier":"default","description":"Local window and notification permissions","windows":["main"],"permissions":["core:default","notification:default"]}

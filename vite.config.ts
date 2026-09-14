@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [
     VitePWA({
       registerType: "prompt",
+      injectRegister: false,
       manifest: {
         name: "自明 SELF",
         short_name: "自明",

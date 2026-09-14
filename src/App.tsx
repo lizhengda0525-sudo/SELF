@@ -1,4 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  type FormEvent,
+} from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   ArrowDownLeft,
@@ -56,6 +62,7 @@ import {
   type Member,
   type Note,
   type Task,
+  type Countdown,
 } from "./domain";
 import { change, db, download, initialize, replaceData } from "./db";
 import {
@@ -68,18 +75,28 @@ import {
   NoteForm,
   RenewForm,
   TaskForm,
+  CountdownForm,
 } from "./components";
 import {
   generateKey,
-  resolveSync,
   synchronize,
   type SyncConfig,
   type SyncConflict,
 } from "./sync";
 
+import { DeviceSettings } from "./DeviceSettings";
+import { AppUpdate } from "./AppUpdate";
+import { exportText } from "./export";
+import { Calendar } from "./Calendar";
+import { ConflictPanel } from "./ConflictPanel";
+import { completeTask, editTask, closeCountdown } from "./planning";
+
+import { ReminderService, ReminderSettings } from "./ReminderSettings";
+
 type Page = "today" | "plan" | "habits" | "ledger" | "members" | "settings";
 type Editor =
-  | { kind: "task"; item?: Task }
+  | { kind: "task"; item?: Task; date?: string; start?: string }
+  | { kind: "countdown"; item?: Countdown }
   | { kind: "entry"; item?: Entry }
   | { kind: "member"; item?: Member }
   | { kind: "habit"; item?: Habit }
@@ -149,6 +166,35 @@ export function App() {
       null,
     );
   const vault = useLiveQuery(() => db.vault.get("main"));
+  const calendarTasks = useMemo(
+    () =>
+      active(vault?.data.tasks || []).filter((t) =>
+        [t.title, t.description, t.list].some((v) =>
+          v.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+        ),
+      ),
+    [vault?.data.tasks, search],
+  );
+  const openCalendarTask = useCallback(
+    (t: Task) => setEditor({ kind: "task", item: t }),
+    [],
+  );
+  const createCalendarTask = useCallback(
+    (date: string, start?: string) => setEditor({ kind: "task", date, start }),
+    [],
+  );
+  const moveCalendarTask = useCallback(
+    async (t: Task, date: string, start: string, duration: number) => {
+      if (t.repeat) {
+        setEditor({ kind: "task", item: { ...t, date, start, duration } });
+        return;
+      }
+      await change((d) =>
+        editTask(d, { ...t, date, start, duration }, "single", t.updatedAt),
+      );
+    },
+    [],
+  );
   const backups =
     useLiveQuery(() => db.backups.orderBy("createdAt").reverse().toArray()) ||
     [];
@@ -244,10 +290,9 @@ export function App() {
     setPage(p);
     setSearch("");
   };
-  async function save<T extends Task | Entry | Member | Habit | Note>(
-    collection: Collection,
-    item: T,
-  ) {
+  async function save<
+    T extends Task | Entry | Member | Habit | Note | Countdown,
+  >(collection: Collection, item: T) {
     await change((d) => {
       const rows = d[collection] as T[];
       const i = rows.findIndex((r) => r.id === item.id);
@@ -270,9 +315,7 @@ export function App() {
     run(
       () =>
         change((d) => {
-          const row = d.tasks.find((x) => x.id === t.id)!;
-          row.done = !row.done;
-          row.updatedAt = new Date().toISOString();
+          completeTask(d, t.id);
         }),
       t.done ? "任务已恢复" : "完成一件事，给自己一点肯定",
     );
@@ -365,6 +408,7 @@ export function App() {
                   className={`list-dot ${t.list === "工作" ? "blue" : t.list === "学习" ? "purple" : ""}`}
                 />
                 {t.list}
+                {t.repeat && <span>↻ 重复</span>}
                 {!compact && t.description && (
                   <span className="task-desc">{t.description}</span>
                 )}
@@ -778,6 +822,35 @@ export function App() {
           </div>
           {page === "today" && (
             <>
+              {active(data.countdowns).filter(
+                (c) => !c.closed && Date.parse(c.target) <= tick + 7 * 86400000,
+              ).length > 0 && (
+                <section className="panel today-countdowns">
+                  <h2>临近的倒计时</h2>
+                  {active(data.countdowns)
+                    .filter(
+                      (c) =>
+                        !c.closed &&
+                        Date.parse(c.target) <= tick + 7 * 86400000,
+                    )
+                    .sort((a, b) => a.target.localeCompare(b.target))
+                    .slice(0, 4)
+                    .map((c) => (
+                      <button
+                        className="secondary"
+                        key={c.id}
+                        onClick={() =>
+                          setEditor({ kind: "countdown", item: c })
+                        }
+                      >
+                        {c.title} ·{" "}
+                        {Date.parse(c.target) <= tick
+                          ? "已到期"
+                          : stamp(c.target)}
+                      </button>
+                    ))}
+                </section>
+              )}
               <div className="today-grid">
                 <section className="today-main">
                   <div className="day-strip">
@@ -1113,6 +1186,8 @@ export function App() {
                 <div className="tabs">
                   {[
                     "全部任务",
+                    "日历",
+                    "倒计时",
                     "重要",
                     "收集箱",
                     "四象限",
@@ -1129,7 +1204,107 @@ export function App() {
                   ))}
                 </div>
               </div>
-              {planTab === "便签" ? (
+              {planTab === "日历" ? (
+                <Calendar
+                  tasks={calendarTasks}
+                  onEdit={openCalendarTask}
+                  onCreate={createCalendarTask}
+                  onMove={moveCalendarTask}
+                />
+              ) : planTab === "倒计时" ? (
+                <>
+                  <button
+                    className="secondary"
+                    onClick={() => setEditor({ kind: "countdown" })}
+                  >
+                    <Plus size={16} /> 新建倒计时
+                  </button>
+                  <div className="note-grid">
+                    {active(data.countdowns)
+                      .filter((c) => matches(c.title))
+                      .sort(
+                        (a, b) =>
+                          Number(a.closed) - Number(b.closed) ||
+                          a.target.localeCompare(b.target),
+                      )
+                      .map((c) => (
+                        <article className="note-card" key={c.id}>
+                          <button
+                            className="text-left"
+                            onClick={() =>
+                              setEditor({ kind: "countdown", item: c })
+                            }
+                          >
+                            <Timer size={20} />
+                            <h3>{c.title}</h3>
+                            <strong className="countdown-value">
+                              {c.closed
+                                ? "已关闭"
+                                : new Date(c.target).getTime() <= tick
+                                  ? "已到期"
+                                  : `${Math.floor((new Date(c.target).getTime() - tick) / 86400000)} 天 ${Math.floor(((new Date(c.target).getTime() - tick) % 86400000) / 3600000)} 小时 ${Math.floor(((Date.parse(c.target) - tick) % 3600000) / 60000)} 分`}
+                            </strong>
+                            <p>
+                              {stamp(c.target)}
+                              {c.repeatDays > 0
+                                ? ` · 每 ${c.repeatDays} 天重复`
+                                : ""}
+                            </p>
+                          </button>
+                          <div className="card-footer">
+                            {!c.closed && (
+                              <button
+                                className="text-button"
+                                onClick={() =>
+                                  run(
+                                    () =>
+                                      change((d) =>
+                                        closeCountdown(
+                                          d.countdowns.find(
+                                            (x) => x.id === c.id,
+                                          )!,
+                                        ),
+                                      ),
+                                    c.repeatDays
+                                      ? "已记录并进入下个周期"
+                                      : "倒计时已关闭",
+                                  )
+                                }
+                              >
+                                {c.repeatDays ? "完成本次" : "关闭倒计时"}
+                              </button>
+                            )}
+                            <button
+                              className="icon-btn"
+                              aria-label={`删除倒计时 ${c.title}`}
+                              onClick={() => remove("countdowns", c.id)}
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                          {c.history.length > 0 && (
+                            <details>
+                              <summary>完成历史（{c.history.length}）</summary>
+                              {c.history
+                                .slice()
+                                .reverse()
+                                .map((h, i) => (
+                                  <p key={i}>
+                                    {stamp(h.target)} → {stamp(h.closedAt)} 完成
+                                  </p>
+                                ))}
+                            </details>
+                          )}
+                        </article>
+                      ))}
+                  </div>
+                  {!active(data.countdowns).length && (
+                    <Empty title="给重要日子留个提醒">
+                      创建截止时间，可按天循环并保留完成历史。
+                    </Empty>
+                  )}
+                </>
+              ) : planTab === "便签" ? (
                 <>
                   <button
                     className="secondary"
@@ -1523,12 +1698,14 @@ export function App() {
           )}
           {page === "settings" && (
             <div className="settings-grid">
+              <ReminderSettings />
+              <DeviceSettings config={config} />
               <section className="panel">
                 <div className="section-title">
                   <h2>
                     <ShieldCheck size={19} /> 保存与同步
                   </h2>
-                  <span className="badge">开发预览版 0.1</span>
+                  <span className="badge">开发预览版 0.2</span>
                 </div>
                 <div className="setting-line">
                   <span>本地保存</span>
@@ -1595,14 +1772,11 @@ export function App() {
                         return;
                       const key = generateKey();
                       setConfig({ ...config, key });
-                      const url = URL.createObjectURL(
-                        new Blob([key], { type: "text/plain" }),
-                      );
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = "SELF-sync-key.txt";
-                      a.click();
-                      setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      void exportText(
+                        "SELF-sync-key.txt",
+                        key,
+                        "text/plain",
+                      ).catch((e) => setError(e.message));
                       setMessage(
                         "密钥已下载，请妥善保存；另一设备需要相同密钥",
                       );
@@ -1758,10 +1932,11 @@ export function App() {
                   </h2>
                 </div>
                 <p>
-                  本版提供应用内会员到期提醒与专注计时。系统后台通知、支付识别和运动数据尚未接入。
+                  本版支持任务、倒计时、会员和专注的系统提醒，请在上方主动开启。支付识别和运动数据尚未接入。
                 </p>
                 <p className="hint">
-                  暂停或取消会员会停止应用内到期提醒。请在手机或电脑系统中另设关键事项提醒。当前支持人民币，不汇总其他币种。
+                  暂停或取消会员会停止后续提醒。浏览器关闭页面、Windows
+                  退出托盘、手机强行停止或限制后台均会影响通知。当前支持人民币，不汇总其他币种。
                 </p>
                 <div className="danger-zone">
                   <h3>清空当前账库</h3>
@@ -1869,25 +2044,42 @@ export function App() {
                   ? editor.item
                     ? "编辑习惯"
                     : "建立一个小习惯"
-                  : editor.kind === "note"
+                  : editor.kind === "countdown"
                     ? editor.item
-                      ? "编辑便签"
-                      : "新建便签"
-                    : editor.kind === "renew"
-                      ? `续费 · ${editor.item.name}`
-                      : editor.kind === "memberDetail"
-                        ? editor.item.name
-                        : editor.item
-                          ? "编辑会员"
-                          : "新增会员"
+                      ? "编辑倒计时"
+                      : "新建倒计时"
+                    : editor.kind === "note"
+                      ? editor.item
+                        ? "编辑便签"
+                        : "新建便签"
+                      : editor.kind === "renew"
+                        ? `续费 · ${editor.item.name}`
+                        : editor.kind === "memberDetail"
+                          ? editor.item.name
+                          : editor.item
+                            ? "编辑会员"
+                            : "新增会员"
           }
           onClose={() => setEditor(null)}
         >
           {editor.kind === "task" && (
             <TaskForm
               task={editor.item}
-              date={page === "today" ? day : undefined}
-              onSave={(t) => save("tasks", t)}
+              date={editor.date ?? (page === "today" ? day : undefined)}
+              start={editor.start}
+              onSave={async (t, scope) => {
+                await change((d) =>
+                  editTask(d, t, scope, editor.item?.updatedAt),
+                );
+                setEditor(null);
+                setMessage("任务已保存，重复历史已保留");
+              }}
+            />
+          )}
+          {editor.kind === "countdown" && (
+            <CountdownForm
+              item={editor.item}
+              onSave={(c) => save("countdowns", c)}
             />
           )}
           {editor.kind === "entry" && (
@@ -2106,71 +2298,27 @@ export function App() {
           </div>
         </Modal>
       )}
+      <ReminderService data={data} />
+      <AppUpdate
+        busy={
+          !!editor ||
+          pending > 0 ||
+          syncBusy ||
+          !!conflict ||
+          !!importData ||
+          !!habitLog
+        }
+      />
       {conflict && (
-        <Modal
-          title="两端都有修改，需要你来决定"
+        <ConflictPanel
+          conflict={conflict}
+          config={config}
           onClose={() => setConflict(null)}
-        >
-          <div className="conflict-body">
-            <p>
-              当前版本按整个账库处理冲突。选定版本前，会保存另一版本到历史备份。可先导出两份比较，稍后再处理。
-            </p>
-            <div className="conflict-compare">
-              {(
-                [
-                  { label: "本机版本", data, side: "local" },
-                  {
-                    label: "远端版本",
-                    data: conflict.remoteData,
-                    side: "remote",
-                  },
-                ] as const
-              ).map((c) => (
-                <section key={c.side}>
-                  <h3>{c.label}</h3>
-                  <p>
-                    任务 {active(c.data.tasks).length} · 账单{" "}
-                    {active(c.data.entries).length} · 会员{" "}
-                    {active(c.data.members).length}
-                  </p>
-                  <p>
-                    本月净支出{" "}
-                    {money(summarize(c.data, today().slice(0, 7)).expense)}
-                  </p>
-                  <button
-                    className="secondary"
-                    onClick={() => download(c.data, `self-${c.side}`)}
-                  >
-                    导出此版本
-                  </button>
-                  <button
-                    className="primary"
-                    disabled={syncBusy}
-                    onClick={() => {
-                      if (
-                        !confirm(
-                          `确认保留整个${c.label}？另一版本将存入历史备份。`,
-                        )
-                      )
-                        return;
-                      setSyncBusy(true);
-                      void run(async () => {
-                        try {
-                          await resolveSync(config, conflict, c.side);
-                          setConflict(null);
-                        } finally {
-                          setSyncBusy(false);
-                        }
-                      }, "冲突已处理，另一版本已备份");
-                    }}
-                  >
-                    保留{c.label}
-                  </button>
-                </section>
-              ))}
-            </div>
-          </div>
-        </Modal>
+          onDone={() => {
+            setConflict(null);
+            setMessage("逐条冲突已处理，两端原版本已备份");
+          }}
+        />
       )}
     </div>
   );

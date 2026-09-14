@@ -19,7 +19,9 @@ import {
   type Member,
   type Habit,
   type Note,
+  type Countdown,
 } from "./domain";
+import { type RepeatScope } from "./planning";
 
 export function Modal({
   title,
@@ -147,28 +149,48 @@ const str = (f: FormData, k: string) => String(f.get(k) || "").trim();
 export function TaskForm({
   task,
   date,
+  start,
   onSave,
 }: {
   task?: Task;
   date?: string;
-  onSave: (t: Task) => Promise<void>;
+  start?: string;
+  onSave: (t: Task, scope: RepeatScope) => Promise<void>;
 }) {
+  const [scope, setScope] = useState<RepeatScope>("single");
+  const [frequency, setFrequency] = useState(task?.repeat?.frequency || "none");
   return (
     <Form
       onSave={async (f) =>
-        onSave({
-          ...task,
-          ...(task ? { updatedAt: new Date().toISOString() } : metadata()),
-          title: str(f, "title"),
-          description: str(f, "description"),
-          list: str(f, "list"),
-          date: str(f, "date"),
-          start: str(f, "start"),
-          duration: Number(f.get("duration")),
-          done: task?.done || false,
-          important: f.has("important"),
-          quadrant: str(f, "quadrant") as Task["quadrant"],
-        } as Task)
+        onSave(
+          {
+            ...task,
+            ...(task ? { updatedAt: new Date().toISOString() } : metadata()),
+            title: str(f, "title"),
+            description: str(f, "description"),
+            list: str(f, "list"),
+            date: str(f, "date"),
+            start: str(f, "start"),
+            duration: Number(f.get("duration")),
+            done: task?.done || false,
+            important: f.has("important"),
+            quadrant: str(f, "quadrant") as Task["quadrant"],
+            repeat:
+              task?.repeat && scope === "single"
+                ? task.repeat
+                : frequency === "none"
+                  ? null
+                  : {
+                      frequency,
+                      interval: Number(f.get("interval") || 1),
+                      until: str(f, "until"),
+                      anchor: Number(str(f, "date").slice(8)),
+                    },
+            reminderMinutes:
+              str(f, "reminder") === "" ? [] : [Number(str(f, "reminder"))],
+          } as Task,
+          scope,
+        )
       }
     >
       <Field label="任务名称">
@@ -186,7 +208,7 @@ export function TaskForm({
           <input name="date" type="date" defaultValue={task?.date ?? date} />
         </Field>
         <Field label="开始时间（可选）">
-          <input name="start" type="time" defaultValue={task?.start} />
+          <input name="start" type="time" defaultValue={task?.start ?? start} />
         </Field>
         <Field label="预计分钟">
           <input
@@ -214,6 +236,69 @@ export function TaskForm({
           </datalist>
         </Field>
       </div>
+      {task?.repeat && (
+        <Field label="本次修改范围">
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value as RepeatScope)}
+          >
+            <option value="single">仅这一次（后续仍按原规则）</option>
+            <option value="following">本次及以后（保留已完成历史）</option>
+          </select>
+        </Field>
+      )}
+      <div className="form-grid">
+        <Field label="重复规则">
+          <select
+            name="frequency"
+            value={frequency}
+            disabled={!!task?.repeat && scope === "single"}
+            onChange={(e) => setFrequency(e.target.value as typeof frequency)}
+          >
+            <option value="none">不重复</option>
+            <option value="daily">每天</option>
+            <option value="weekdays">工作日</option>
+            <option value="weekly">每周</option>
+            <option value="monthly">每月</option>
+          </select>
+        </Field>
+        <Field label="提醒">
+          <select
+            name="reminder"
+            defaultValue={task?.reminderMinutes?.[0] ?? ""}
+          >
+            <option value="">不提醒</option>
+            <option value="0">开始时（全天任务上午 9 点）</option>
+            <option value="5">提前 5 分钟</option>
+            <option value="15">提前 15 分钟</option>
+            <option value="60">提前 1 小时</option>
+            <option value="1440">提前 1 天</option>
+          </select>
+        </Field>
+      </div>
+      {frequency !== "none" && (
+        <div className="form-grid">
+          <Field label="重复间隔">
+            <input
+              name="interval"
+              type="number"
+              min="1"
+              max="365"
+              defaultValue={task?.repeat?.interval || 1}
+              disabled={!!task?.repeat && scope === "single"}
+              required
+            />
+          </Field>
+          <Field label="重复截至（可选）">
+            <input
+              name="until"
+              type="date"
+              defaultValue={task?.repeat?.until}
+              disabled={!!task?.repeat && scope === "single"}
+            />
+          </Field>
+        </div>
+      )}
       <Field label="四象限">
         <select name="quadrant" defaultValue={task?.quadrant || "none"}>
           <option value="none">未归类</option>
@@ -240,6 +325,92 @@ export function TaskForm({
           placeholder="补充细节，让行动更容易"
         />
       </Field>
+      {!!task?.completionHistory?.length && (
+        <details>
+          <summary>实际完成历史（{task.completionHistory.length}）</summary>
+          {task.completionHistory.map((at, i) => (
+            <p key={i}>{new Date(at).toLocaleString("zh-CN")}</p>
+          ))}
+        </details>
+      )}
+      {frequency !== "none" && (
+        <p className="hint">
+          完成本次后生成下一次；恢复未完成会保留历史时间。重复间隔按所选规则计数，工作日跳过周六、周日。
+        </p>
+      )}
+    </Form>
+  );
+}
+
+export function CountdownForm({
+  item,
+  onSave,
+}: {
+  item?: Countdown;
+  onSave: (c: Countdown) => Promise<void>;
+}) {
+  const target = item ? new Date(item.target) : new Date(Date.now() + 86400000);
+  const local = new Date(target.getTime() - target.getTimezoneOffset() * 60000)
+    .toISOString()
+    .slice(0, 16);
+  return (
+    <Form
+      onSave={async (f) =>
+        onSave({
+          ...item,
+          ...(item ? { updatedAt: new Date().toISOString() } : metadata()),
+          title: str(f, "title"),
+          target: new Date(str(f, "target")).toISOString(),
+          closed: false,
+          repeatDays: Number(f.get("repeatDays")),
+          reminderMinutes: Number(f.get("reminderMinutes")),
+          history: item?.history || [],
+        } as Countdown)
+      }
+    >
+      <Field label="倒计时名称">
+        <input
+          name="title"
+          required
+          maxLength={100}
+          defaultValue={item?.title}
+          autoFocus
+          placeholder="例如：证件到期、项目截止"
+        />
+      </Field>
+      <Field label="目标日期与时间">
+        <input
+          name="target"
+          type="datetime-local"
+          defaultValue={local}
+          required
+        />
+      </Field>
+      <div className="form-grid">
+        <Field label="提前提醒（分钟）">
+          <input
+            name="reminderMinutes"
+            type="number"
+            min="0"
+            max="43200"
+            defaultValue={item?.reminderMinutes || 0}
+            required
+          />
+        </Field>
+        <Field label="关闭后重复间隔（天，0 为不重复）">
+          <input
+            name="repeatDays"
+            type="number"
+            min="0"
+            max="3650"
+            defaultValue={item?.repeatDays || 0}
+            required
+          />
+        </Field>
+      </div>
+      <p className="hint">
+        到期后保留记录。关闭本次后才生成下一次；已到期时可以延后目标时间。
+      </p>
     </Form>
   );
 }
