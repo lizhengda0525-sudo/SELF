@@ -111,7 +111,7 @@ export function editTask(
       seriesId: edited.repeat ? crypto.randomUUID() : series,
       seriesStopped: false,
       seriesTemplate: undefined,
-      occurrenceDate: edited.date,
+      occurrenceDate: edited.date || undefined,
       updatedAt: new Date().toISOString(),
     });
   } else {
@@ -132,6 +132,7 @@ export function editTask(
         important: template.important,
         quadrant: template.quadrant,
         date: originalDate,
+        reminderMinutes: template.reminderMinutes || [],
       };
     }
   }

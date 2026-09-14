@@ -45,12 +45,18 @@ test("single occurrence edit does not change next rule; following edit retains c
   d.tasks.push(task());
   editTask(
     d,
-    { ...d.tasks[0], title: "一次改名", date: "2024-02-02" },
+    {
+      ...d.tasks[0],
+      title: "一次改名",
+      date: "2024-02-02",
+      reminderMinutes: [15],
+    },
     "single",
   );
   completeTask(d, d.tasks[0].id);
   assert.equal(d.tasks[1].title, "读书");
   assert.equal(d.tasks[1].date, "2024-02-29");
+  assert.deepEqual(d.tasks[1].reminderMinutes, []);
   editTask(
     d,
     {
@@ -67,6 +73,13 @@ test("single occurrence edit does not change next rule; following edit retains c
   assert.equal(d.tasks[0].title, "一次改名");
   assert.equal(d.tasks[0].seriesStopped, true);
   validateData(d);
+  editTask(
+    d,
+    { ...d.tasks[2], repeat: null, date: "", start: "", reminderMinutes: [] },
+    "following",
+  );
+  validateData(d);
+  assert.equal(d.tasks[2].repeat, null);
 });
 test("weekdays skip weekend, until is inclusive, stale edit rejected, overlaps use open interval", () => {
   const t = task({

@@ -86,6 +86,10 @@ const taskSchema = z
         important: z.boolean(),
         quadrant: z.enum(["none", "iu", "in", "nu", "nn"]),
         date: daySchema,
+        reminderMinutes: z
+          .array(z.number().int().min(0).max(43200))
+          .max(5)
+          .default([]),
       })
       .optional(),
   })
