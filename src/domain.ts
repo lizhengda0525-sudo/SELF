@@ -25,7 +25,7 @@ export function addMonths(
   d.setUTCDate(Math.min(anchor, last));
   return d.toISOString().slice(0, 10);
 }
-const daySchema = z
+export const daySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
   .refine((v) => {
@@ -45,6 +45,12 @@ const base = {
   updatedAt: z.string().datetime(),
   deletedAt: z.string().datetime().nullable(),
 };
+export const repeatSchema = z.object({
+  frequency: z.enum(["daily", "weekly", "monthly", "weekdays"]),
+  interval: z.number().int().min(1).max(365),
+  until: daySchema.or(z.literal("")),
+  anchor: z.number().int().min(1).max(31),
+});
 const taskSchema = z
   .object({
     ...base,
@@ -60,8 +66,39 @@ const taskSchema = z
     done: z.boolean(),
     important: z.boolean(),
     quadrant: z.enum(["none", "iu", "in", "nu", "nn"]),
+    repeat: repeatSchema.nullable().optional(),
+    seriesId: z.string().uuid().optional(),
+    occurrenceDate: daySchema.optional(),
+    completedAt: z.string().datetime().nullable().optional(),
+    completionHistory: z.array(z.string().datetime()).max(10000).optional(),
+    reminderMinutes: z
+      .array(z.number().int().min(0).max(43200))
+      .max(5)
+      .optional(),
+    seriesStopped: z.boolean().optional(),
+    seriesTemplate: z
+      .object({
+        title,
+        description: text,
+        list: title,
+        start: z.string(),
+        duration: z.number().int().min(5).max(1440),
+        important: z.boolean(),
+        quadrant: z.enum(["none", "iu", "in", "nu", "nn"]),
+        date: daySchema,
+      })
+      .optional(),
   })
   .refine((t) => !t.start || !!t.date, "有时间的任务必须选择日期")
+  .refine((t) => !t.repeat || !!t.date, "重复任务必须安排日期")
+  .refine(
+    (t) => !t.repeat?.until || t.repeat.until >= t.date,
+    "重复截止日不能早于本次日期",
+  )
+  .refine(
+    (t) => !t.reminderMinutes?.length || !!t.date,
+    "请先安排日期再设置提醒",
+  )
   .refine(
     (t) =>
       !t.start ||
@@ -127,8 +164,24 @@ const timerSchema = z.object({
   accumulated: z.number().min(0).max(86400),
   startedAt: z.number().nullable(),
 });
+const countdownSchema = z.object({
+  ...base,
+  title,
+  target: z.string().datetime(),
+  closed: z.boolean(),
+  repeatDays: z.number().int().min(0).max(3650),
+  reminderMinutes: z.number().int().min(0).max(43200),
+  history: z
+    .array(
+      z.object({
+        target: z.string().datetime(),
+        closedAt: z.string().datetime(),
+      }),
+    )
+    .max(10000),
+});
 export const dataSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   tasks: z.array(taskSchema).max(10000),
   entries: z.array(entrySchema).max(10000),
   members: z.array(memberSchema).max(10000),
@@ -136,6 +189,7 @@ export const dataSchema = z.object({
   notes: z.array(noteSchema).max(10000),
   focuses: z.array(focusSchema).max(10000),
   timer: timerSchema.nullable(),
+  countdowns: z.array(countdownSchema).max(10000).default([]),
 });
 export type Data = z.infer<typeof dataSchema>;
 export type Task = Data["tasks"][number];
@@ -143,8 +197,15 @@ export type Entry = Data["entries"][number];
 export type Member = Data["members"][number];
 export type Habit = Data["habits"][number];
 export type Note = Data["notes"][number];
+export type Countdown = Data["countdowns"][number];
 export type Collection =
-  "tasks" | "entries" | "members" | "habits" | "notes" | "focuses";
+  | "tasks"
+  | "entries"
+  | "members"
+  | "habits"
+  | "notes"
+  | "focuses"
+  | "countdowns";
 export const collections: Collection[] = [
   "tasks",
   "entries",
@@ -152,9 +213,10 @@ export const collections: Collection[] = [
   "habits",
   "notes",
   "focuses",
+  "countdowns",
 ];
 export const emptyData = (): Data => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   tasks: [],
   entries: [],
   members: [],
@@ -162,6 +224,7 @@ export const emptyData = (): Data => ({
   notes: [],
   focuses: [],
   timer: null,
+  countdowns: [],
 });
 export const metadata = () => ({
   id: crypto.randomUUID(),
@@ -184,6 +247,13 @@ export function parseMoney(input: string) {
   return value;
 }
 export function validateData(input: unknown): Data {
+  if (
+    input &&
+    typeof input === "object" &&
+    "schemaVersion" in input &&
+    input.schemaVersion === 1
+  )
+    input = { ...input, schemaVersion: 2 };
   const result = dataSchema.safeParse(input);
   if (!result.success)
     throw new Error(`数据未保存：${result.error.issues[0].message}`);

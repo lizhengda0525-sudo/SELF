@@ -8,3 +8,13 @@ test-results/
 playwright-report/
 artifacts/
 *.log
+
+src-tauri/target/
+android/.gradle/
+android/local.properties
+android/**/build/
+*.jks
+*.keystore
+src-tauri/icons/android/
+src-tauri/icons/ios/
+

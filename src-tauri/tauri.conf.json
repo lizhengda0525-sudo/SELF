@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SELF",
+  "version": "0.2.0",
+  "identifier": "com.self.steward",
+  "build": {"beforeBuildCommand": "pnpm build", "frontendDist": "../dist", "beforeDevCommand": "pnpm dev --port 4176", "devUrl": "http://localhost:4176"},
+  "app": {"windows": [{"title": "自明 SELF", "width": 1280, "height": 880, "minWidth": 390, "minHeight": 600}], "security": {"csp": "default-src 'self'; connect-src ipc: http://ipc.localhost 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'"}},
+  "bundle": {"active": true, "targets": ["nsis"], "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"], "windows": {"nsis": {"languages": ["SimpChinese", "English"], "displayLanguageSelector": true, "installMode": "currentUser"}}}
+}

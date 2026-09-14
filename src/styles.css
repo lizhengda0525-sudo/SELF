@@ -2537,3 +2537,157 @@ dialog::backdrop {
     font-size: 10px;
   }
 }
+:root {
+  --fc-border-color: #e1e7e0;
+  --fc-today-bg-color: #eff5ed;
+  --fc-event-bg-color: #326653;
+  --fc-event-border-color: #326653;
+}
+.calendar-panel {
+  min-width: 0;
+}
+.calendar-toolbar,
+.device-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.calendar-toolbar h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #edf1eb;
+  border-radius: 10px;
+}
+.segmented button {
+  padding: 7px 16px;
+  border-radius: 7px;
+}
+.segmented .selected {
+  background: #326653;
+  color: white;
+}
+.calendar-event-text {
+  font-size: 12px;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.calendar-done {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.calendar-overlap {
+  border: 2px solid #c77c27 !important;
+}
+.fc {
+  font-size: 13px;
+}
+.fc a {
+  color: inherit;
+}
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number {
+  padding: 8px;
+}
+.fc .fc-timegrid-slot {
+  height: 32px;
+}
+.calendar-inbox {
+  margin-top: 22px;
+}
+.calendar-inbox-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.countdown-value {
+  display: block;
+  font-size: 24px;
+  color: #326653;
+  margin: 16px 0;
+}
+.record-conflict {
+  margin: 20px 0;
+  border-top: 1px solid #e1e7e0;
+  padding-top: 12px;
+}
+.conflict-compare > label {
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  min-width: 0;
+}
+.conflict-compare > label.chosen {
+  border-color: #326653;
+  background: #f1f7ef;
+}
+.record-preview {
+  font-size: 12px;
+}
+.record-preview div {
+  margin: 8px 0;
+}
+.record-preview dt {
+  color: #758078;
+}
+.record-preview dd {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.issued-token {
+  background: #f2f6ef;
+  padding: 16px;
+  border-radius: 12px;
+  margin-top: 16px;
+}
+.device-create {
+  margin: 16px 0;
+}
+.device-row {
+  border-bottom: 1px solid #e1e7e0;
+  padding: 12px 0;
+}
+.notification-warning {
+  position: fixed;
+  bottom: 76px;
+  left: 20px;
+  right: 20px;
+  z-index: 100;
+  padding: 12px;
+  background: #fff2df;
+  color: #865627;
+  border-radius: 12px;
+}
+@media (max-width: 600px) {
+  .calendar-panel {
+    padding: 10px;
+  }
+  .calendar-toolbar h2 {
+    font-size: 15px;
+  }
+  .fc {
+    font-size: 11px;
+  }
+  .fc .fc-col-header-cell-cushion,
+  .fc .fc-daygrid-day-number {
+    padding: 4px;
+  }
+  .calendar-event-text {
+    font-size: 10px;
+  }
+  .conflict-compare {
+    grid-template-columns: 1fr !important;
+  }
+  .toolbar .tabs {
+    flex-wrap: wrap;
+  }
+}
