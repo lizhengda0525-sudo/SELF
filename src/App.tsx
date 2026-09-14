@@ -85,6 +85,7 @@ import {
 } from "./sync";
 
 import { DeviceSettings } from "./DeviceSettings";
+import { AppUpdate } from "./AppUpdate";
 import { exportText } from "./export";
 import { Calendar } from "./Calendar";
 import { ConflictPanel } from "./ConflictPanel";
@@ -2298,6 +2299,16 @@ export function App() {
         </Modal>
       )}
       <ReminderService data={data} />
+      <AppUpdate
+        busy={
+          !!editor ||
+          pending > 0 ||
+          syncBusy ||
+          !!conflict ||
+          !!importData ||
+          !!habitLog
+        }
+      />
       {conflict && (
         <ConflictPanel
           conflict={conflict}

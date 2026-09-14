@@ -11,6 +11,7 @@ on:
         "package.json",
         "pnpm-lock.yaml",
         "capacitor.config.ts",
+        "vite.config.ts",
         ".github/workflows/native.yml",
       ]
 jobs:

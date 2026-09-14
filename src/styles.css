@@ -2674,6 +2674,21 @@ dialog::backdrop {
   color: #865627;
   border-radius: 12px;
 }
+.app-update {
+  position: fixed;
+  bottom: 80px;
+  left: 24px;
+  right: 24px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  background: #edf3e9;
+  border: 1px solid #bfd0b6;
+  border-radius: 12px;
+}
 @media (max-width: 600px) {
   .calendar-panel {
     padding: 10px;
