@@ -234,7 +234,7 @@ export function createServer({
       "Content-Type": mime[path.extname(file)] || "application/octet-stream",
       "Cache-Control": "no-cache",
       "Content-Security-Policy":
-        "default-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        "default-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
     });
     if (req.method === "HEAD") return res.end();
     createReadStream(file).pipe(res);

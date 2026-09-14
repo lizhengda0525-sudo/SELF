@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useMemo, useEffect, memo } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -7,8 +7,9 @@ import zhCn from "@fullcalendar/core/locales/zh-cn";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { active, localDay, type Task } from "./domain";
 import { taskOverlap } from "./planning";
+const plugins = [dayGridPlugin, timeGridPlugin, interactionPlugin];
 
-export function Calendar({
+function CalendarView({
   tasks,
   onEdit,
   onCreate,
@@ -25,30 +26,59 @@ export function Calendar({
   ) => Promise<void>;
 }) {
   const ref = useRef<FullCalendar>(null);
+  const container = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const observer = new ResizeObserver(() =>
+      ref.current?.getApi().updateSize(),
+    );
+    if (container.current) observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
   const [view, setView] = useState("dayGridMonth"),
     [title, setTitle] = useState(""),
-    [error, setError] = useState("");
-  const events = active(tasks)
-    .filter((t) => t.date)
-    .map((t) => {
-      const start = new Date(`${t.date}T${t.start || "00:00"}:00`);
-      return {
-        id: t.id,
-        title: t.title,
-        start,
-        allDay: !t.start,
-        end: t.start
-          ? new Date(start.getTime() + t.duration * 60000)
-          : undefined,
-        classNames: [
-          t.done ? "calendar-done" : "",
-          taskOverlap(t, tasks).length ? "calendar-overlap" : "",
-        ],
-        extendedProps: { task: t },
-      };
-    });
+    [error, setError] = useState(""),
+    [saving, setSaving] = useState(false),
+    [status, setStatus] = useState("");
+  async function move(t: Task, date: string, start: string, duration: number) {
+    setSaving(true);
+    setStatus("正在保存日历安排…");
+    setError("");
+    try {
+      await onMove(t, date, start, duration);
+      setStatus(t.repeat ? "请确认重复任务修改范围" : "日历安排已保存");
+    } catch (e) {
+      setError((e as Error).message);
+      setStatus("");
+    } finally {
+      setSaving(false);
+    }
+  }
+  const signature = JSON.stringify(tasks);
+  const events = useMemo(
+    () =>
+      active(tasks)
+        .filter((t) => t.date)
+        .map((t) => {
+          const start = new Date(`${t.date}T${t.start || "00:00"}:00`);
+          return {
+            id: t.id,
+            title: t.title,
+            start,
+            allDay: !t.start,
+            end: t.start
+              ? new Date(start.getTime() + t.duration * 60000)
+              : undefined,
+            classNames: [
+              t.done ? "calendar-done" : "",
+              taskOverlap(t, tasks).length ? "calendar-overlap" : "",
+            ],
+            extendedProps: { task: t },
+          };
+        }),
+    [signature],
+  );
   return (
-    <section className="calendar-panel panel">
+    <section ref={container} className="calendar-panel panel">
       <div className="calendar-toolbar">
         <div className="inline-actions">
           <button
@@ -102,13 +132,13 @@ export function Calendar({
       )}
       <FullCalendar
         ref={ref}
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+        plugins={plugins}
         locale={zhCn}
         initialView="dayGridMonth"
         headerToolbar={false}
         firstDay={1}
         height="auto"
-        editable
+        editable={!saving}
         selectable
         selectMirror
         dayMaxEvents={3}
@@ -133,7 +163,9 @@ export function Calendar({
               : `${String(info.date.getHours()).padStart(2, "0")}:${String(info.date.getMinutes()).padStart(2, "0")}`,
           )
         }
-        eventClick={(info) => onEdit(info.event.extendedProps.task as Task)}
+        eventClick={(info) => {
+          if (!saving) onEdit(tasks.find((t) => t.id === info.event.id)!);
+        }}
         eventContent={(info) => (
           <span className="calendar-event-text">
             {info.event.extendedProps.task.done ? "✓ " : ""}
@@ -149,9 +181,7 @@ export function Calendar({
               ? ""
               : `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
           info.revert();
-          void onMove(t, date, start, t.duration)
-            .then(() => setError(""))
-            .catch((e) => setError(e.message));
+          void move(t, date, start, t.duration);
         }}
         eventResize={(info) => {
           const t = info.oldEvent.extendedProps.task as Task;
@@ -159,11 +189,14 @@ export function Calendar({
             (info.event.end!.getTime() - info.event.start!.getTime()) / 60000,
           );
           info.revert();
-          void onMove(t, t.date, t.start, duration)
-            .then(() => setError(""))
-            .catch((e) => setError(e.message));
+          void move(t, t.date, t.start, duration);
         }}
       />
+      {status && (
+        <p role="status" className="hint">
+          {status}
+        </p>
+      )}
       <div className="section-title calendar-inbox">
         <h3>未安排任务</h3>
         <button className="text-button" onClick={() => onCreate("")}>
@@ -182,3 +215,5 @@ export function Calendar({
     </section>
   );
 }
+
+export const Calendar = memo(CalendarView);

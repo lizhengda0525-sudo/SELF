@@ -2608,6 +2608,13 @@ dialog::backdrop {
   flex-wrap: wrap;
   gap: 8px;
 }
+.today-countdowns {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
 .countdown-value {
   display: block;
   font-size: 24px;

@@ -92,7 +92,7 @@ const taskSchema = z
   .refine((t) => !t.start || !!t.date, "有时间的任务必须选择日期")
   .refine((t) => !t.repeat || !!t.date, "重复任务必须安排日期")
   .refine(
-    (t) => !t.repeat?.until || t.repeat.until >= t.date,
+    (t) => !t.repeat?.until || t.repeat.until >= (t.occurrenceDate || t.date),
     "重复截止日不能早于本次日期",
   )
   .refine(

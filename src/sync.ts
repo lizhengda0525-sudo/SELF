@@ -159,7 +159,10 @@ async function commit(
     await db.vault.put({
       ...latest,
       data: { ...merged, timer: latest.data.timer },
-      serverBase: { ...merged, timer: null },
+      // IndexedDB preserves aliases within one object graph. The baseline must
+      // not share arrays/records with editable data, or local edits would also
+      // mutate the baseline and later look unchanged during a three-way merge.
+      serverBase: structuredClone({ ...merged, timer: null }),
       serverRevision: remote.revision,
       endpoint,
       dirty: false,

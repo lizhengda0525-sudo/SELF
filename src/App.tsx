@@ -1,4 +1,10 @@
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  type FormEvent,
+} from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   ArrowDownLeft,
@@ -159,6 +165,35 @@ export function App() {
       null,
     );
   const vault = useLiveQuery(() => db.vault.get("main"));
+  const calendarTasks = useMemo(
+    () =>
+      active(vault?.data.tasks || []).filter((t) =>
+        [t.title, t.description, t.list].some((v) =>
+          v.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+        ),
+      ),
+    [vault?.data.tasks, search],
+  );
+  const openCalendarTask = useCallback(
+    (t: Task) => setEditor({ kind: "task", item: t }),
+    [],
+  );
+  const createCalendarTask = useCallback(
+    (date: string, start?: string) => setEditor({ kind: "task", date, start }),
+    [],
+  );
+  const moveCalendarTask = useCallback(
+    async (t: Task, date: string, start: string, duration: number) => {
+      if (t.repeat) {
+        setEditor({ kind: "task", item: { ...t, date, start, duration } });
+        return;
+      }
+      await change((d) =>
+        editTask(d, { ...t, date, start, duration }, "single", t.updatedAt),
+      );
+    },
+    [],
+  );
   const backups =
     useLiveQuery(() => db.backups.orderBy("createdAt").reverse().toArray()) ||
     [];
@@ -786,6 +821,35 @@ export function App() {
           </div>
           {page === "today" && (
             <>
+              {active(data.countdowns).filter(
+                (c) => !c.closed && Date.parse(c.target) <= tick + 7 * 86400000,
+              ).length > 0 && (
+                <section className="panel today-countdowns">
+                  <h2>临近的倒计时</h2>
+                  {active(data.countdowns)
+                    .filter(
+                      (c) =>
+                        !c.closed &&
+                        Date.parse(c.target) <= tick + 7 * 86400000,
+                    )
+                    .sort((a, b) => a.target.localeCompare(b.target))
+                    .slice(0, 4)
+                    .map((c) => (
+                      <button
+                        className="secondary"
+                        key={c.id}
+                        onClick={() =>
+                          setEditor({ kind: "countdown", item: c })
+                        }
+                      >
+                        {c.title} ·{" "}
+                        {Date.parse(c.target) <= tick
+                          ? "已到期"
+                          : stamp(c.target)}
+                      </button>
+                    ))}
+                </section>
+              )}
               <div className="today-grid">
                 <section className="today-main">
                   <div className="day-strip">
@@ -1141,30 +1205,10 @@ export function App() {
               </div>
               {planTab === "日历" ? (
                 <Calendar
-                  tasks={tasks.filter((t) =>
-                    matches(t.title, t.description, t.list),
-                  )}
-                  onEdit={(t) => setEditor({ kind: "task", item: t })}
-                  onCreate={(date, start) =>
-                    setEditor({ kind: "task", date, start })
-                  }
-                  onMove={async (t, date, start, duration) => {
-                    if (t.repeat) {
-                      setEditor({
-                        kind: "task",
-                        item: { ...t, date, start, duration },
-                      });
-                      return;
-                    }
-                    await change((d) =>
-                      editTask(
-                        d,
-                        { ...t, date, start, duration },
-                        "single",
-                        t.updatedAt,
-                      ),
-                    );
-                  }}
+                  tasks={calendarTasks}
+                  onEdit={openCalendarTask}
+                  onCreate={createCalendarTask}
+                  onMove={moveCalendarTask}
                 />
               ) : planTab === "倒计时" ? (
                 <>
@@ -1197,7 +1241,7 @@ export function App() {
                                 ? "已关闭"
                                 : new Date(c.target).getTime() <= tick
                                   ? "已到期"
-                                  : `${Math.floor((new Date(c.target).getTime() - tick) / 86400000)} 天 ${Math.floor(((new Date(c.target).getTime() - tick) % 86400000) / 3600000)} 小时`}
+                                  : `${Math.floor((new Date(c.target).getTime() - tick) / 86400000)} 天 ${Math.floor(((new Date(c.target).getTime() - tick) % 86400000) / 3600000)} 小时 ${Math.floor(((Date.parse(c.target) - tick) % 3600000) / 60000)} 分`}
                             </strong>
                             <p>
                               {stamp(c.target)}
@@ -1887,10 +1931,11 @@ export function App() {
                   </h2>
                 </div>
                 <p>
-                  本版提供应用内会员到期提醒与专注计时。系统后台通知、支付识别和运动数据尚未接入。
+                  本版支持任务、倒计时、会员和专注的系统提醒，请在上方主动开启。支付识别和运动数据尚未接入。
                 </p>
                 <p className="hint">
-                  暂停或取消会员会停止应用内到期提醒。请在手机或电脑系统中另设关键事项提醒。当前支持人民币，不汇总其他币种。
+                  暂停或取消会员会停止后续提醒。浏览器关闭页面、Windows
+                  退出托盘、手机强行停止或限制后台均会影响通知。当前支持人民币，不汇总其他币种。
                 </p>
                 <div className="danger-zone">
                   <h3>清空当前账库</h3>

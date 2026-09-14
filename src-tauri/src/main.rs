@@ -25,7 +25,9 @@ async fn export_text(name: String, content: String) -> Result<bool, String> {
     }).await.map_err(|e|e.to_string())?
 }
 fn main() {
-    tauri::Builder::default().plugin(tauri_plugin_notification::init())
+    tauri::Builder::default()
+      .plugin(tauri_plugin_single_instance::init(|app,_,_|{if let Some(w)=app.get_webview_window("main"){let _=w.show();let _=w.set_focus();}}))
+      .plugin(tauri_plugin_notification::init())
       .invoke_handler(tauri::generate_handler![schedule_reminders,export_text])
       .setup(|app| {
         let path=app.path().app_data_dir()?.join("reminders.json");

@@ -325,6 +325,19 @@ export function TaskForm({
           placeholder="补充细节，让行动更容易"
         />
       </Field>
+      {!!task?.completionHistory?.length && (
+        <details>
+          <summary>实际完成历史（{task.completionHistory.length}）</summary>
+          {task.completionHistory.map((at, i) => (
+            <p key={i}>{new Date(at).toLocaleString("zh-CN")}</p>
+          ))}
+        </details>
+      )}
+      {frequency !== "none" && (
+        <p className="hint">
+          完成本次后生成下一次；恢复未完成会保留历史时间。重复间隔按所选规则计数，工作日跳过周六、周日。
+        </p>
+      )}
     </Form>
   );
 }

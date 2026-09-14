@@ -213,10 +213,12 @@ test("two independent devices sync encrypted data and keep both conflict version
     await add(pa, "从设备 A 创建");
     await configure(pa);
     await pa.getByRole("button", { name: "立即同步" }).click();
+    await expect(pa.getByRole("button", { name: "立即同步" })).toBeEnabled();
     await expect(pa.getByText("同步检查完成", { exact: true })).toBeVisible();
     await pb.goto("/");
     await configure(pb);
     await pb.getByRole("button", { name: "立即同步" }).click();
+    await expect(pb.getByRole("button", { name: "立即同步" })).toBeEnabled();
     await expect(pb.getByText("同步检查完成", { exact: true })).toBeVisible();
     await nav(pb, "今天").click();
     await expect(
@@ -225,22 +227,15 @@ test("two independent devices sync encrypted data and keep both conflict version
     await add(pa, "设备 A 的离线修改");
     await configure(pa);
     await pa.getByRole("button", { name: "立即同步" }).click();
+    await expect(pa.getByRole("button", { name: "立即同步" })).toBeEnabled();
     await expect(pa.getByText("同步检查完成", { exact: true })).toBeVisible();
     await add(pb, "设备 B 的离线修改");
     await configure(pb);
     await pb.getByRole("button", { name: "立即同步" }).click();
-    await expect(
-      pb.getByRole("heading", { name: "两端都有修改，需要你来决定" }),
-    ).toBeVisible();
-    pb.once("dialog", (d) => d.accept());
-    await pb.getByRole("button", { name: "保留本机版本" }).click();
-    await expect(
-      pb.getByText("冲突已处理，另一版本已备份", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      pb.getByText("同步冲突：远端版本", { exact: true }),
-    ).toBeVisible();
+    await expect(pb.getByRole("button", { name: "立即同步" })).toBeEnabled();
+    await expect(pb.getByText("同步检查完成", { exact: true })).toBeVisible();
     await pa.getByRole("button", { name: "立即同步" }).click();
+    await expect(pa.getByRole("button", { name: "立即同步" })).toBeEnabled();
     await expect(pa.getByText("同步检查完成", { exact: true })).toBeVisible();
     await nav(pa, "今天").click();
     await expect(
@@ -254,7 +249,46 @@ test("two independent devices sync encrypted data and keep both conflict version
         name: "完成任务 设备 A 的离线修改",
         exact: true,
       }),
-    ).toHaveCount(0);
+    ).toBeVisible();
+    // Both devices now edit the same record independently.
+    await pa
+      .locator(".task-content")
+      .filter({ hasText: "从设备 A 创建" })
+      .click();
+    await pa.getByLabel("任务名称").fill("A 修改共同任务");
+    await pa.getByRole("button", { name: "保存", exact: true }).click();
+    await nav(pb, "今天").click();
+    await pb
+      .locator(".task-content")
+      .filter({ hasText: "从设备 A 创建" })
+      .click();
+    await pb.getByLabel("任务名称").fill("B 修改共同任务");
+    await pb.getByRole("button", { name: "保存", exact: true }).click();
+    await configure(pa);
+    await pa.getByRole("button", { name: "立即同步" }).click();
+    await expect(pa.getByRole("button", { name: "立即同步" })).toBeEnabled();
+    await expect(pa.getByText("同步检查完成", { exact: true })).toBeVisible();
+    await configure(pb);
+    await pb.getByRole("button", { name: "立即同步" }).click();
+    await expect(pb.getByRole("button", { name: "立即同步" })).toBeEnabled();
+    await expect(
+      pb.getByRole("heading", { name: "逐条处理同步冲突" }),
+    ).toBeVisible();
+    await pb.getByRole("radio").first().check();
+    await pb.getByRole("button", { name: "应用选择并同步" }).click();
+    await expect(
+      pb.getByText("逐条冲突已处理，两端原版本已备份", { exact: true }),
+    ).toBeVisible();
+    await nav(pb, "今天").click();
+    await expect(
+      pb.getByRole("button", { name: "完成任务 B 修改共同任务", exact: true }),
+    ).toBeVisible();
+    await expect(
+      pb.getByRole("button", {
+        name: "完成任务 设备 A 的离线修改",
+        exact: true,
+      }),
+    ).toBeVisible();
   } finally {
     await a.close();
     await b.close();

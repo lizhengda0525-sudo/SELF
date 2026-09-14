@@ -61,3 +61,78 @@ test("sync server authenticates and CAS allows only one concurrent writer; stale
     await new Promise<void>((r) => server.close(r));
   }
 });
+test("owner provisions separately revocable devices without exposing stored tokens", async () => {
+  const token = "owner-test-only-token-at-least-32-characters";
+  const server = createServer({ token, dbPath: ":memory:" });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  try {
+    const created = await fetch(`${base}/api/devices`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ name: "手机" }),
+    });
+    assert.equal(created.status, 201);
+    const device = await created.json();
+    assert.equal(device.token.length, 64);
+    const dh = { Authorization: `Bearer ${device.token}` };
+    assert.equal(
+      (await fetch(`${base}/api/sync`, { headers: dh })).status,
+      200,
+    );
+    assert.equal(
+      (
+        await fetch(`${base}/api/devices`, {
+          method: "POST",
+          headers: { ...dh, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "越权" }),
+        })
+      ).status,
+      403,
+    );
+    const account = await (
+      await fetch(`${base}/api/account`, { headers })
+    ).json();
+    assert.equal(account.devices[0].name, "手机");
+    assert.ok(account.devices[0].lastSeen);
+    assert.equal(JSON.stringify(account).includes(device.token), false);
+    assert.equal(JSON.stringify(account).includes("tokenHash"), false);
+    assert.equal(
+      (
+        await fetch(`${base}/api/devices/${device.id}`, {
+          method: "DELETE",
+          headers,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await fetch(`${base}/api/sync`, { headers: dh })).status,
+      401,
+    );
+    assert.equal((await fetch(`${base}/api/sync`, { headers })).status, 200);
+    const cors = await fetch(`${base}/api/sync`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://localhost",
+        "Access-Control-Request-Method": "GET",
+      },
+    });
+    assert.equal(cors.status, 204);
+    assert.equal(
+      cors.headers.get("Access-Control-Allow-Origin"),
+      "https://localhost",
+    );
+    const evil = await fetch(`${base}/api/sync`, {
+      method: "OPTIONS",
+      headers: { Origin: "https://untrusted.example" },
+    });
+    assert.equal(evil.headers.get("Access-Control-Allow-Origin"), null);
+  } finally {
+    await new Promise<void>((r) => server.close(r));
+  }
+});
